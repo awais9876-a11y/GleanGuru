@@ -1,0 +1,16 @@
+{
+  "name": "glean-guru",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend/static server glue for the GleanGuru (Memory Agent) Flutter web app.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

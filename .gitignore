@@ -1,0 +1,43 @@
+# Dependencies
+.pub/
+.dart_tool/
+build/
+
+# Node (server.js / Vercel build tooling)
+node_modules/
+.vercel/
+
+# Flutter SDK cloned by scripts/vercel-build.sh
+flutter/
+flutter_sdk/
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+lcov.info
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Distribution / packaging
+/bin/

@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "public": true,
+  "framework": null,
+  "installCommand": "npm install",
+  "buildCommand": "bash scripts/vercel-build.sh",
+  "outputDirectory": "build/web",
+  "rewrites": [
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*).(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ],
+  "github": {
+    "silent": false
+  }
+}

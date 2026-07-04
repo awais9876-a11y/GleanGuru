@@ -1,0 +1,9 @@
+.git
+.github
+build
+node_modules
+.vercel
+flutter
+flutter_sdk
+*.md
+test
