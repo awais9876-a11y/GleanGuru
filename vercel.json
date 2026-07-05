@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "public": true,
   "framework": null,
   "installCommand": "npm install",
   "buildCommand": "bash scripts/vercel-build.sh",
@@ -21,8 +20,5 @@
         }
       ]
     }
-  ],
-  "github": {
-    "silent": false
-  }
+  ]
 }
