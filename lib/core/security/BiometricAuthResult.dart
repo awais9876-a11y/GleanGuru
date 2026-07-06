@@ -22,9 +22,9 @@ class BiometricService {
   }
   
   /// Get list of enrolled biometric types
-  Future<List<BiometricType>> getEnrolledBiometrics() async {
+  Future<List<BiometricType>> getAvailableBiometrics() async {
     try {
-      return await _localAuth.getEnrolledBiometrics();
+      return await _localAuth.getAvailableBiometrics();
     } on PlatformException catch (e) {
       throw BiometricException('Failed to get enrolled biometrics: ${e.message}');
     }
