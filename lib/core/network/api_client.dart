@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
@@ -60,7 +59,7 @@ class ApiClient implements SyncApiContract {
         _isOnline = !results.contains(ConnectivityResult.none);
         
         if (wasOnline != _isOnline) {
-          onConnectionStatusChanged(_isOnline);
+           onConnectionStatusChanged?.call(_isOnline);
         }
       },
     );

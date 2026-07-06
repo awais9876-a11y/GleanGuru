@@ -1,6 +1,5 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:sqflite/sqflite.dart';
-import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart';
 
@@ -13,11 +12,25 @@ class LocalDatabase {
   Database? _database;
   final bool _enableEncryption;
   
-  LocalDatabase({this._enableEncryption = true});
+  LocalDatabase({bool enableEncryption = true}) : _enableEncryption = enableEncryption;
+
+  /// Whether records inserted via this instance are expected to be
+  /// encrypted at the application layer before being persisted.
+  bool get isEncryptionEnabled => _enableEncryption;
   
   /// Initialize database connection
   Future<void> initialize() async {
     if (_database != null) return;
+
+    if (kIsWeb) {
+      // sqflite has no native Web implementation. Rather than crashing at
+      // runtime when a plugin channel doesn't exist in the browser, we
+      // simply skip local persistence on web: every CRUD method below
+      // already guards on `_database == null` and throws a clean
+      // DatabaseException instead of a missing-plugin error.
+      debugPrint('LocalDatabase: SQLite is not available on Flutter Web; skipping local persistence.');
+      return;
+    }
     
     final documentsDirectory = await getApplicationDocumentsDirectory();
     final path = join(documentsDirectory.path, _databaseName);

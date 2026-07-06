@@ -1,6 +1,6 @@
 
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'equatable/equatable.dart';
+import 'package:equatable/equatable.dart';
 import '../../../core/network/qwen_service.dart';
 
 // --- Events ---
@@ -65,20 +65,11 @@ class MemoryAgentBloc extends Bloc<MemoryAgentEvent, MemoryAgentState> {
     emit(MemoryAgentLoading());
 
     try {
-      // Construct messages for Qwen
-      final messages = [
-        {'role': 'system', 'content': 'You are a helpful Multimodal Memory Agent.'},
-        ...event.history,
-        {'role': 'user', 'content': event.message},
-      ];
-
-      final response = await _qwenService.sendChatMessage(
-        messages: messages.cast<Map<String, dynamic>>(),
-        model: 'qwen-turbo', 
+      final assistantMessage = await _qwenService.sendMessage(
+        prompt: event.message,
+        history: event.history,
       );
 
-      final assistantMessage = response.output?.choices.first.message.content ?? 'No response generated.';
-      
       final updatedHistory = [
         ...event.history,
         {'role': 'user', 'content': event.message},

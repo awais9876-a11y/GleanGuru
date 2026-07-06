@@ -20,8 +20,6 @@ class AppTheme {
   static const Color _lightOnError = Color(0xFFFFFFFF);
   static const Color _lightErrorContainer = Color(0xFFF9DEDC);
   static const Color _lightOnErrorContainer = Color(0xFF410E0B);
-  static const Color _lightBackground = Color(0xFFFFFBFE);
-  static const Color _lightOnBackground = Color(0xFF1C1B1F);
   static const Color _lightSurface = Color(0xFFFFFBFE);
   static const Color _lightOnSurface = Color(0xFF1C1B1F);
   static const Color _lightOutline = Color(0xFF79747E);
@@ -43,8 +41,6 @@ class AppTheme {
   static const Color _darkOnError = Color(0xFF601410);
   static const Color _darkErrorContainer = Color(0xFF8C1D18);
   static const Color _darkOnErrorContainer = Color(0xFFF9DEDC);
-  static const Color _darkBackground = Color(0xFF1C1B1F);
-  static const Color _darkOnBackground = Color(0xFFE6E1E5);
   static const Color _darkSurface = Color(0xFF1C1B1F);
   static const Color _darkOnSurface = Color(0xFFE6E1E5);
   static const Color _darkOutline = Color(0xFF938F99);
@@ -75,8 +71,6 @@ class AppTheme {
         outline: _lightOutline,
         surface: _lightSurface,
         onSurface: _lightOnSurface,
-        background: _lightBackground,
-        onBackground: _lightOnBackground,
       ),
       appBarTheme: const AppBarTheme(
         centerTitle: false,
@@ -89,7 +83,7 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: _lightOutline.withOpacity(0.2)),
+          side: BorderSide(color: _lightOutline.withValues(alpha: 0.2)),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -111,7 +105,7 @@ class AppTheme {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: _lightOutline.withOpacity(0.5)),
+          borderSide: BorderSide(color: _lightOutline.withValues(alpha: 0.5)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -161,8 +155,6 @@ class AppTheme {
         outline: _darkOutline,
         surface: _darkSurface,
         onSurface: _darkOnSurface,
-        background: _darkBackground,
-        onBackground: _darkOnBackground,
       ),
       appBarTheme: const AppBarTheme(
         centerTitle: false,
@@ -175,7 +167,7 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: _darkOutline.withOpacity(0.2)),
+          side: BorderSide(color: _darkOutline.withValues(alpha: 0.2)),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -197,7 +189,7 @@ class AppTheme {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: _darkOutline.withOpacity(0.5)),
+          borderSide: BorderSide(color: _darkOutline.withValues(alpha: 0.5)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

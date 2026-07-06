@@ -9,7 +9,6 @@ class PushNotificationService {
   final StreamController<RemoteMessage> _messageController = StreamController.broadcast();
   
   String? _fcmToken;
-  Function(RemoteMessage)? _onBackgroundMessageHandler;
   Function(RemoteMessage)? _onForegroundMessageHandler;
   
   PushNotificationService({FirebaseMessaging? messaging})

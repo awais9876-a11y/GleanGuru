@@ -72,3 +72,16 @@ class PasswordResetRequested extends AuthEvent {
   @override
   List<Object?> get props => [email];
 }
+
+/// Internal event: fired whenever AuthService's authStateChanges stream
+/// emits, so the resulting state transition goes through the BLoC's normal
+/// event-handler flow instead of calling emit() directly from a stream
+/// listener (which bloc disallows outside of an event handler).
+class _AuthUserChanged extends AuthEvent {
+  final User? user;
+
+  const _AuthUserChanged(this.user);
+
+  @override
+  List<Object?> get props => [user];
+}

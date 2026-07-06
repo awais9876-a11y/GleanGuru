@@ -22,7 +22,7 @@ class QwenService {
   /// Sends a chat request to the backend, which forwards it to Qwen.
   Future<String> sendMessage({
     required String prompt,
-    List<Map<String, String>>? history,
+    List<Map<String, dynamic>>? history,
   }) async {
     try {
       final messages = [

@@ -20,15 +20,23 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<SignUpRequested>(_onSignUpRequested);
     on<SignOutRequested>(_onSignOutRequested);
     on<BiometricAuthRequested>(_onBiometricAuthRequested);
+    on<_AuthUserChanged>(_onAuthUserChanged);
     
-    // Listen to auth state changes
+    // Listen to auth state changes. We route this through add() rather than
+    // calling emit() directly here: emit() may only be called from within a
+    // registered event handler, not from an arbitrary stream listener set up
+    // in the constructor.
     _authStateSubscription = _authService.authStateChanges.listen((user) {
-      if (user != null) {
-        emit(AuthAuthenticated(user));
-      } else {
-        emit(AuthUnauthenticated());
-      }
+      add(_AuthUserChanged(user));
     });
+  }
+
+  void _onAuthUserChanged(_AuthUserChanged event, Emitter<AuthState> emit) {
+    if (event.user != null) {
+      emit(AuthAuthenticated(event.user!));
+    } else {
+      emit(AuthUnauthenticated());
+    }
   }
   
   Future<void> _onAuthCheckRequested(
