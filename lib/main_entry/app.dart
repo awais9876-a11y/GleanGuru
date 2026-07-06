@@ -9,6 +9,7 @@ import '../features/memory_agent/memory_home_screen.dart';
 import '../features/profile/profile_screen.dart';
 import 'theme_config.dart';
 
+// updated
 /// Main Application Widget
 /// Configures navigation, theming, and dependency injection
 class App extends StatelessWidget {

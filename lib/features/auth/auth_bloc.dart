@@ -5,6 +5,7 @@ import 'package:equatable/equatable.dart';
 part 'auth_event.dart';
 part 'auth_state.dart';
 
+// updated
 /// Authentication BLoC for managing auth state transitions
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthService _authService;
