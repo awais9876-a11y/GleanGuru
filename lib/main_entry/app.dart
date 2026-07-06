@@ -9,7 +9,6 @@ import '../features/memory_agent/memory_home_screen.dart';
 import '../features/profile/profile_screen.dart';
 import 'theme_config.dart';
 
-// updated
 /// Main Application Widget
 /// Configures navigation, theming, and dependency injection
 class App extends StatelessWidget {
@@ -117,12 +116,12 @@ class _MainShellState extends State<MainShell> {
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
+            selectedIcon: Icon(Icons.home),
             label: 'Home',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
+            selectedIcon: Icon(Icons.person),
             label: 'Profile',
           ),
         ],

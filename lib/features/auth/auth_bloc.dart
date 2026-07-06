@@ -5,7 +5,6 @@ import 'package:equatable/equatable.dart';
 part 'auth_event.dart';
 part 'auth_state.dart';
 
-// updated
 /// Authentication BLoC for managing auth state transitions
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthService _authService;
@@ -61,7 +60,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         email: event.email,
         password: event.password,
       );
-      emit(AuthAuthenticated(user));
+      if (user != null) {
+        emit(AuthAuthenticated(user));
+      } else {
+        emit(const AuthError('Sign in failed: invalid credentials'));
+      }
     } catch (e) {
       emit(AuthError('Sign in failed: $e'));
     }
@@ -115,7 +118,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         password: event.password,
         name: event.name,
       );
-      emit(AuthAuthenticated(user));
+      if (user != null) {
+        emit(AuthAuthenticated(user));
+      } else {
+        emit(const AuthError('Sign up failed: could not create account'));
+      }
     } catch (e) {
       emit(AuthError('Sign up failed: $e'));
     }

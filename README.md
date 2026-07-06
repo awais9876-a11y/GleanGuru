@@ -99,6 +99,31 @@ flutter pub get
 flutter run -d chrome
 ```
 
+### Important: commit `pubspec.lock`
+
+This repo does not currently have a committed `pubspec.lock`. Without it,
+every build (including on Vercel) re-resolves the entire dependency graph
+from scratch against whatever the newest published versions happen to be
+at that moment — which means a build that works today can fail tomorrow
+for reasons completely unrelated to any code change, purely because an
+upstream package (most commonly the Firebase family) published a new
+release with a different internal version requirement.
+
+Fix this once, permanently:
+
+```bash
+flutter pub get          # resolves everything, writes pubspec.lock
+git add pubspec.lock
+git commit -m "Commit pubspec.lock to freeze dependency resolution"
+git push
+```
+
+If you don't have Flutter installed locally, open the repo in a GitHub
+Codespace (free tier is sufficient), install Flutter there, run the
+commands above, and push. After this, Vercel builds install the exact
+locked versions every time instead of re-solving, and this class of
+"version solving failed" error stops recurring.
+
 To exercise the chat feature locally, run the Node server instead so
 `/api/chat` is available:
 
