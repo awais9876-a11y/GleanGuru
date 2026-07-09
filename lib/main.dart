@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 import 'core/auth/firebase_auth_service.dart';
 import 'core/auth/no_op_auth_service.dart';
@@ -46,7 +47,7 @@ Future<void> main() async {
   // see README).
   var firebaseAvailable = false;
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     firebaseAvailable = true;
   } catch (e) {
     debugPrint('Firebase failed to initialize: $e');
