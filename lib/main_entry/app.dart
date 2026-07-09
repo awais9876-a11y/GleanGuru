@@ -75,7 +75,7 @@ class App extends StatelessWidget {
       ],
       errorBuilder: (context, state) => ErrorScreen(error: state.error),
       redirect: (context, state) {
-        final authState = context.read<AuthBloc>().state;
+        final authState = authBloc.state;
         final isAuthenticated = authState is AuthAuthenticated;
         final isCheckingAuth = authState is AuthInitial || authState is AuthLoading;
         final isLoggingIn = state.matchedLocation == '/login' || 
