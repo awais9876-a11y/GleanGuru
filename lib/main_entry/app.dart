@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -9,16 +10,37 @@ import '../features/memory_agent/memory_home_screen.dart';
 import '../features/profile/profile_screen.dart';
 import 'theme_config.dart';
 
+/// Bridges a Stream (here, AuthBloc's state stream) into a Listenable that
+/// GoRouter can use as `refreshListenable`, so the router's `redirect`
+/// callback is automatically re-evaluated every time auth state changes -
+/// not just when something explicitly triggers navigation.
+class GoRouterRefreshStream extends ChangeNotifier {
+  late final StreamSubscription<dynamic> _subscription;
+
+  GoRouterRefreshStream(Stream<dynamic> stream) {
+    notifyListeners();
+    _subscription = stream.asBroadcastStream().listen((_) => notifyListeners());
+  }
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+}
+
 /// Main Application Widget
 /// Configures navigation, theming, and dependency injection
 class App extends StatelessWidget {
+  final AuthBloc authBloc;
   final GoRouter _router;
   
-  App({super.key}) : _router = _createRouter();
+  App({super.key, required this.authBloc}) : _router = _createRouter(authBloc);
   
-  static GoRouter _createRouter() {
+  static GoRouter _createRouter(AuthBloc authBloc) {
     return GoRouter(
       initialLocation: '/splash',
+      refreshListenable: GoRouterRefreshStream(authBloc.stream),
       routes: [
         GoRoute(
           path: '/splash',
@@ -55,10 +77,23 @@ class App extends StatelessWidget {
       redirect: (context, state) {
         final authState = context.read<AuthBloc>().state;
         final isAuthenticated = authState is AuthAuthenticated;
+        final isCheckingAuth = authState is AuthInitial || authState is AuthLoading;
         final isLoggingIn = state.matchedLocation == '/login' || 
                            state.matchedLocation == '/signup';
+        final isSplash = state.matchedLocation == '/splash';
         
-        if (!isAuthenticated && !isLoggingIn && state.matchedLocation != '/splash') {
+        // Still resolving the initial auth check: stay on splash, don't
+        // redirect anywhere yet.
+        if (isCheckingAuth) {
+          return isSplash ? null : '/splash';
+        }
+        
+        // Auth check has resolved: leave splash for the correct destination.
+        if (isSplash) {
+          return isAuthenticated ? '/home' : '/login';
+        }
+        
+        if (!isAuthenticated && !isLoggingIn) {
           return '/login';
         }
         

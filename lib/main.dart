@@ -53,11 +53,12 @@ Future<void> main() async {
   }
 
   final authService = firebaseAvailable ? FirebaseAuthService() : NoOpAuthService();
+  final authBloc = AuthBloc(authService: authService);
 
   runApp(
-    BlocProvider<AuthBloc>(
-      create: (_) => AuthBloc(authService: authService),
-      child: App(),
+    BlocProvider<AuthBloc>.value(
+      value: authBloc,
+      child: App(authBloc: authBloc),
     ),
   );
 }

@@ -1,10 +1,83 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:multimodal_memory_agent/main_entry/app.dart';
+import 'package:multimodal_memory_agent/features/auth/auth_bloc.dart';
 import 'package:multimodal_memory_agent/features/auth/login_screen.dart';
 import 'package:multimodal_memory_agent/features/memory_agent/memory_home_screen.dart';
 import 'package:multimodal_memory_agent/features/profile/profile_screen.dart';
+
+/// Fake AuthService for integration tests: starts signed out, and
+/// successfully "signs in" with any email/password so the login ->
+/// navigate flow below can actually be exercised without a real backend.
+class _FakeAuthService implements AuthService {
+  User? _currentUser;
+
+  @override
+  Stream<User?> get authStateChanges => const Stream.empty();
+
+  @override
+  Future<User?> getCurrentUser() async => _currentUser;
+
+  @override
+  Future<User?> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    _currentUser = User(
+      id: 'integration-test-user',
+      email: email,
+      name: 'Test User',
+      createdAt: DateTime.now(),
+    );
+    return _currentUser;
+  }
+
+  @override
+  Future<User?> signUpWithEmail({
+    required String email,
+    required String password,
+    String? name,
+  }) async {
+    _currentUser = User(
+      id: 'integration-test-user',
+      email: email,
+      name: name,
+      createdAt: DateTime.now(),
+    );
+    return _currentUser;
+  }
+
+  @override
+  Future<User?> signInWithGoogle() async => null;
+
+  @override
+  Future<User?> signInWithApple() async => null;
+
+  @override
+  Future<void> signOut() async {
+    _currentUser = null;
+  }
+
+  @override
+  Future<BiometricResult> authenticateWithBiometrics() async {
+    return BiometricResult(success: false, message: 'Not available in test');
+  }
+
+  @override
+  Future<void> resetPassword(String email) async {}
+}
+
+/// Wraps App with the same BlocProvider it expects in production
+/// (see lib/main.dart), backed by a fresh fake auth service per test.
+Widget _testApp() {
+  final authBloc = AuthBloc(authService: _FakeAuthService());
+  return BlocProvider<AuthBloc>.value(
+    value: authBloc,
+    child: App(authBloc: authBloc),
+  );
+}
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -12,7 +85,7 @@ void main() {
   group('Full User Lifecycle Integration Test', () {
     testWidgets('App Launch -> Login -> Navigate -> Settings Edit', (tester) async {
       // Launch app
-      await tester.pumpWidget(App());
+      await tester.pumpWidget(_testApp());
       await tester.pumpAndSettle();
       
       // Verify splash screen appears
@@ -84,7 +157,7 @@ void main() {
     });
     
     testWidgets('Biometric Authentication Flow', (tester) async {
-      await tester.pumpWidget(App());
+      await tester.pumpWidget(_testApp());
       await tester.pumpAndSettle();
       
       // Wait for splash and redirect
@@ -106,7 +179,7 @@ void main() {
     });
     
     testWidgets('Offline Mode Handling', (tester) async {
-      await tester.pumpWidget(App());
+      await tester.pumpWidget(_testApp());
       await tester.pumpAndSettle();
       
       // Simulate offline state would be tested with mock connectivity
