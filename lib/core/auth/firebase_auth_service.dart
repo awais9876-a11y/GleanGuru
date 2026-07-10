@@ -9,16 +9,28 @@ import '../security/biometric_service.dart';
 /// with Google / Apple federated sign-in and local biometric unlock.
 class FirebaseAuthService implements AuthService {
   final fb.FirebaseAuth _firebaseAuth;
-  final GoogleSignIn _googleSignIn;
+  final GoogleSignIn? _providedGoogleSignIn;
   final BiometricService _biometricService;
+
+  GoogleSignIn? _googleSignIn;
 
   FirebaseAuthService({
     fb.FirebaseAuth? firebaseAuth,
     GoogleSignIn? googleSignIn,
     BiometricService? biometricService,
   })  : _firebaseAuth = firebaseAuth ?? fb.FirebaseAuth.instance,
-        _googleSignIn = googleSignIn ?? GoogleSignIn(),
+        _providedGoogleSignIn = googleSignIn,
         _biometricService = biometricService ?? BiometricService();
+
+  /// GoogleSignIn is constructed lazily, the first time it's actually
+  /// needed (i.e. when a user taps "Sign in with Google"), not eagerly at
+  /// app startup. On web, constructing it triggers loading Google
+  /// Identity Services' script (accounts.google.com/gsi/client) - doing
+  /// that unconditionally during app boot meant any CSP restriction or
+  /// network hiccup with that specific script could break the entire
+  /// app's startup, not just the Google sign-in button.
+  GoogleSignIn get _googleSignInInstance =>
+      _googleSignIn ??= _providedGoogleSignIn ?? GoogleSignIn();
 
   User? _mapUser(fb.User? user) {
     if (user == null) return null;
@@ -69,7 +81,7 @@ class FirebaseAuthService implements AuthService {
 
   @override
   Future<User?> signInWithGoogle() async {
-    final googleUser = await _googleSignIn.signIn();
+    final googleUser = await _googleSignInInstance.signIn();
     if (googleUser == null) {
       // User cancelled the sign-in flow.
       return null;
@@ -107,7 +119,7 @@ class FirebaseAuthService implements AuthService {
   Future<void> signOut() async {
     await Future.wait([
       _firebaseAuth.signOut(),
-      _googleSignIn.signOut(),
+      if (_googleSignIn != null) _googleSignIn!.signOut(),
     ]);
   }
 
