@@ -19,6 +19,6 @@ echo "==> Fetching packages..."
 flutter pub get
 
 echo "==> Building Flutter web release..."
-flutter build web --release --base-href "/"
+flutter build web --release --source-maps --base-href "/"
 
 echo "==> Build complete: build/web"

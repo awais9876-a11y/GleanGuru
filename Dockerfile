@@ -9,7 +9,7 @@ RUN flutter pub get
 
 # Copy source code and build
 COPY . .
-RUN flutter build web --release --base-href "/"
+RUN flutter build web --release --source-maps --base-href "/"
 
 # ---- Stage 2: Serve the build + /api/chat with Node -----------------------
 # We use a small Node/Express server (server.js) instead of plain Nginx so

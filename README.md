@@ -92,6 +92,30 @@ container, `nginx.conf` is kept as a reference config for that — but note
 it has no `/api/chat` route, so you'd need to provide that separately (e.g.
 Alibaba Function Compute) for the chat feature to work.
 
+### Automated static deploy via GitHub Actions (`.github/workflows/alibabacloud.yml`)
+
+This repo also includes a workflow that automatically builds and syncs the
+static web build to an Alibaba Cloud OSS bucket on every push to `main`.
+This is a **separate, pure-static deployment path** from the Docker
+instructions above — same tradeoff applies: `/api/chat` will not work
+through this path, since OSS is object storage with no server-side code
+execution.
+
+Required GitHub Secrets (repo → Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `ALIBABA_ACCESS_KEY_ID` | From Alibaba Cloud RAM console |
+| `ALIBABA_ACCESS_KEY_SECRET` | From Alibaba Cloud RAM console |
+| `ALIBABA_OSS_REGION` | Your bucket's region code, e.g. `oss-us-west-1` or `oss-cn-hangzhou` — find this on your bucket's overview page in the OSS console |
+| `ALIBABA_OSS_BUCKET` | Your actual bucket name (no `oss://` prefix) |
+
+The workflow also configures the bucket's static website hosting (index
+and error document both set to `index.html`), which is required for
+client-side routes (`/home`, `/profile`, handled by `go_router`) to work
+on refresh or direct link — without it, OSS returns a raw XML error
+instead of your app for any URL that isn't the bucket root.
+
 ## Local development
 
 ```bash
