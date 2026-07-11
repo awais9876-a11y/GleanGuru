@@ -158,18 +158,60 @@ QWEN_API_KEY=your_key_here node server.js
 # open http://localhost:8080
 ```
 
-## Firebase setup (required for sign-in features)
+## Firebase setup (required for sign-in AND the memory bank)
 
 This app expects a Firebase project for email/Google/Apple sign-in
-(`lib/core/auth/firebase_auth_service.dart`, wired up in `lib/main.dart`).
+(`lib/core/auth/firebase_auth_service.dart`, wired up in `lib/main.dart`)
+**and** for persisting the user's knowledge bank
+(`lib/core/database/memory_repository.dart`, backed by Cloud Firestore).
 `Firebase.initializeApp()` is wrapped in a try/catch so the app still boots
-without one, but sign-in will not work until you:
+without one, but sign-in and memory persistence will not work until you:
 
 1. Create a Firebase project and register a Web app.
 2. Add the Firebase Web SDK config (see FlutterFire docs) so
    `Firebase.initializeApp()` can find your project config on web.
 3. Enable the Email/Password, Google, and Apple sign-in providers you want
    to use in the Firebase console.
+4. **Create a Cloud Firestore database** for the project (Firebase console
+   -> Build -> Firestore Database -> Create database). Any region is fine;
+   the app doesn't depend on which one.
+5. **Deploy the security rules in `firestore.rules`** so the app can
+   actually read/write the `users/{uid}/memories` collection - by default
+   Firestore denies all access, and the app has no way to deploy rules for
+   itself:
+   ```bash
+   npm install -g firebase-tools   # one-time
+   firebase login
+   firebase use <your-firebase-project-id>
+   firebase deploy --only firestore:rules
+   ```
+   Until this is done, chat still works (messages go to Qwen and back),
+   but nothing is saved - `MemoryHomeScreen` shows a "memory storage is
+   unavailable" banner and every conversation resets on refresh.
+
+## How the memory bank actually works
+
+- Every chat turn (`role: user` / `role: assistant`) is written to
+  `users/{uid}/memories/{entryId}` in Firestore via `MemoryRepository`,
+  scoped to the signed-in user only (enforced by `firestore.rules`, not
+  just client-side).
+- On opening the chat screen, `MemoryHomeScreen` loads the user's most
+  recent entries and the conversation picks up where it left off - across
+  devices, browsers, and sessions, not just within one tab.
+- Only the most recent ~30 entries are replayed back to Qwen as context per
+  request (`MemoryAgentBloc._contextWindowSize`), to keep request size and
+  latency bounded as a user's history grows into the hundreds of entries.
+  Everything is still saved in full; this only limits how much of it the
+  model sees on any single turn. Retrieval-based recall over the *entire*
+  history (embeddings + vector search, so the model can pull in a relevant
+  fact from months ago even if it's outside the recent-30 window) is a
+  natural next step, not yet implemented.
+- "Clear knowledge bank" (trash icon in the chat app bar) permanently
+  deletes a user's entries from Firestore - there's no undo.
+- This deliberately does **not** use `LocalDatabase` (SQLite via sqflite):
+  sqflite has no Flutter Web implementation, so anything stored there would
+  never persist on the Vercel or Alibaba OSS deployments, which are both
+  web builds.
 
 ## Tests
 

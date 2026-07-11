@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Deploy with: firebase deploy --only firestore:rules
+// (requires the Firebase CLI and `firebase use <project-id>` once, locally
+// or in CI - this repo does not run that automatically, so these rules
+// must be deployed manually at least once before Firestore reads/writes
+// from the app will succeed; until then, Firestore denies all access by
+// default and MemoryRepository will fail soft - see its class doc.)
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Each user's knowledge bank lives at users/{uid}/memories/{entryId}.
+    // Only that same signed-in user (matched by Firebase Auth uid) may
+    // read or write their own entries - nobody else's, and never
+    // unauthenticated.
+    match /users/{userId}/memories/{entryId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Default deny for everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

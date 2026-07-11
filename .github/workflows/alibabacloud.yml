@@ -71,10 +71,16 @@ jobs:
       # fall back to your Flutter app for any unmatched path, the same
       # way Vercel's rewrite rule and the Docker/nginx SPA fallback do.
       - name: Configure OSS static website hosting (SPA fallback)
+        # `aliyun oss website --method put` does NOT take --index-document /
+        # --error-document as CLI flags (that was the "invalid flag
+        # index-document" build failure). It takes an XML config file as its
+        # positional argument instead. oss-website-config.xml (committed at
+        # the repo root) sets both IndexDocument and ErrorDocument to
+        # index.html, so any unmatched path (e.g. a go_router deep link)
+        # falls back to the Flutter app shell instead of OSS's raw
+        # "NoSuchKey" XML error.
         run: |
-          aliyun oss website --method put oss://${{ secrets.ALIBABA_OSS_BUCKET }} \
-            --index-document index.html \
-            --error-document index.html
+          aliyun oss website --method put oss://${{ secrets.ALIBABA_OSS_BUCKET }} oss-website-config.xml
 
       # Step 8: Push files to the OSS bucket and remove deprecated old files.
       - name: Sync Files to Alibaba OSS

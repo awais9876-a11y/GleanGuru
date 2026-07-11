@@ -1,6 +1,6 @@
-
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import '../../../core/database/memory_repository.dart';
 import '../../../core/network/qwen_service.dart';
 
 // --- Events ---
@@ -9,79 +9,181 @@ abstract class MemoryAgentEvent extends Equatable {
   List<Object?> get props => [];
 }
 
+/// Loads this user's existing knowledge bank from Firestore. Dispatched
+/// once when the chat screen first opens for a signed-in user.
+class LoadMemoryRequested extends MemoryAgentEvent {
+  final String userId;
+  LoadMemoryRequested({required this.userId});
+
+  @override
+  List<Object?> get props => [userId];
+}
+
 class SendMessageEvent extends MemoryAgentEvent {
+  final String userId;
   final String message;
-  final List<Map<String, dynamic>> history;
 
-  SendMessageEvent({required this.message, required this.history});
+  SendMessageEvent({required this.userId, required this.message});
 
   @override
-  List<Object?> get props => [message, history];
+  List<Object?> get props => [userId, message];
 }
 
-// --- States ---
-abstract class MemoryAgentState extends Equatable {
+/// Permanently deletes the signed-in user's entire knowledge bank.
+class ClearMemoryRequested extends MemoryAgentEvent {
+  final String userId;
+  ClearMemoryRequested({required this.userId});
+
   @override
-  List<Object?> get props => [];
+  List<Object?> get props => [userId];
 }
 
-class MemoryAgentInitial extends MemoryAgentState {}
+/// Discards in-memory chat state (used on sign-out) without touching what's
+/// already persisted in Firestore.
+class MemoryAgentReset extends MemoryAgentEvent {}
 
-class MemoryAgentLoading extends MemoryAgentState {}
+// --- State ---
+/// A single immutable snapshot of the conversation. One state class (not a
+/// hierarchy) so the UI always has `history` + `isSending` +
+/// `isMemoryPersisted` to render, no matter what just happened.
+class MemoryAgentState extends Equatable {
+  final List<MemoryEntry> history;
+  final bool isLoadingHistory;
+  final bool isSending;
+  final bool isMemoryPersisted;
+  final String? errorMessage;
 
-class MemoryAgentSuccess extends MemoryAgentState {
-  final String response;
-  final List<Map<String, dynamic>> updatedHistory;
+  const MemoryAgentState({
+    this.history = const [],
+    this.isLoadingHistory = false,
+    this.isSending = false,
+    this.isMemoryPersisted = false,
+    this.errorMessage,
+  });
 
-  MemoryAgentSuccess({required this.response, required this.updatedHistory});
+  MemoryAgentState copyWith({
+    List<MemoryEntry>? history,
+    bool? isLoadingHistory,
+    bool? isSending,
+    bool? isMemoryPersisted,
+    String? errorMessage,
+    bool clearError = false,
+  }) {
+    return MemoryAgentState(
+      history: history ?? this.history,
+      isLoadingHistory: isLoadingHistory ?? this.isLoadingHistory,
+      isSending: isSending ?? this.isSending,
+      isMemoryPersisted: isMemoryPersisted ?? this.isMemoryPersisted,
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+    );
+  }
 
   @override
-  List<Object?> get props => [response, updatedHistory];
-}
-
-class MemoryAgentError extends MemoryAgentState {
-  final String errorMessage;
-
-  MemoryAgentError({required this.errorMessage});
-
-  @override
-  List<Object?> get props => [errorMessage];
+  List<Object?> get props =>
+      [history, isLoadingHistory, isSending, isMemoryPersisted, errorMessage];
 }
 
 // --- BLoC ---
 class MemoryAgentBloc extends Bloc<MemoryAgentEvent, MemoryAgentState> {
   final QwenService _qwenService;
+  final MemoryRepository _memoryRepository;
 
-  MemoryAgentBloc({required QwenService qwenService}) 
-      : _qwenService = qwenService, 
-        super(MemoryAgentInitial()) {
+  /// How many recent turns are sent back to the model as context. Keeps the
+  /// request payload/latency bounded as a user's knowledge bank grows into
+  /// the hundreds or thousands of entries - the model still gets recent
+  /// conversational context; it isn't full long-term-memory retrieval
+  /// (that would need embeddings + vector search - a good next step, out
+  /// of scope for this pass), but every entry is still saved permanently
+  /// and reloaded in full next time the user opens the app.
+  static const int _contextWindowSize = 30;
+
+  MemoryAgentBloc({
+    required QwenService qwenService,
+    required MemoryRepository memoryRepository,
+  })  : _qwenService = qwenService,
+        _memoryRepository = memoryRepository,
+        super(const MemoryAgentState()) {
+    on<LoadMemoryRequested>(_onLoadMemory);
     on<SendMessageEvent>(_onSendMessage);
+    on<ClearMemoryRequested>(_onClearMemory);
+    on<MemoryAgentReset>((event, emit) => emit(const MemoryAgentState()));
+  }
+
+  Future<void> _onLoadMemory(
+    LoadMemoryRequested event,
+    Emitter<MemoryAgentState> emit,
+  ) async {
+    emit(state.copyWith(isLoadingHistory: true, clearError: true));
+    final history = await _memoryRepository.loadRecentHistory(event.userId);
+    emit(state.copyWith(
+      history: history,
+      isLoadingHistory: false,
+      isMemoryPersisted: _memoryRepository.isAvailable,
+    ));
   }
 
   Future<void> _onSendMessage(
     SendMessageEvent event,
     Emitter<MemoryAgentState> emit,
   ) async {
-    emit(MemoryAgentLoading());
+    final priorHistory = state.history;
+    final userEntry = MemoryEntry(
+      id: _memoryRepository.newId(),
+      role: 'user',
+      content: event.message,
+      createdAt: DateTime.now(),
+    );
+
+    // Optimistic update: show the user's message immediately, before the
+    // model has replied.
+    final historyWithUserMessage = [...priorHistory, userEntry];
+    emit(state.copyWith(history: historyWithUserMessage, isSending: true, clearError: true));
 
     try {
-      final assistantMessage = await _qwenService.sendMessage(
+      // priorHistory excludes the just-added userEntry - QwenService.
+      // sendMessage appends {role: user, content: prompt} itself, so
+      // passing historyWithUserMessage here would duplicate the current
+      // message.
+      final startIndex = priorHistory.length > _contextWindowSize
+          ? priorHistory.length - _contextWindowSize
+          : 0;
+      final contextMessages = priorHistory
+          .skip(startIndex)
+          .map((e) => e.toApiMessage())
+          .toList();
+
+      final assistantText = await _qwenService.sendMessage(
         prompt: event.message,
-        history: event.history,
+        history: contextMessages,
       );
 
-      final updatedHistory = [
-        ...event.history,
-        {'role': 'user', 'content': event.message},
-        {'role': 'assistant', 'content': assistantMessage},
-      ];
+      final assistantEntry = MemoryEntry(
+        id: _memoryRepository.newId(),
+        role: 'assistant',
+        content: assistantText,
+        createdAt: DateTime.now(),
+      );
 
-      emit(MemoryAgentSuccess(
-        response: assistantMessage,
-        updatedHistory: updatedHistory,
-      ));
+      final finalHistory = [...historyWithUserMessage, assistantEntry];
+      emit(state.copyWith(history: finalHistory, isSending: false));
+
+      // Persist both turns permanently. This is the actual "growing
+      // knowledge bank" write - it happens after the UI already updated,
+      // so a slow/failed write never blocks or breaks the chat experience.
+      await _memoryRepository.addEntries(event.userId, [userEntry, assistantEntry]);
     } catch (e) {
-      emit(MemoryAgentError(errorMessage: e.toString()));
+      emit(state.copyWith(
+        isSending: false,
+        errorMessage: 'Message failed to send: $e',
+      ));
     }
+  }
+
+  Future<void> _onClearMemory(
+    ClearMemoryRequested event,
+    Emitter<MemoryAgentState> emit,
+  ) async {
+    await _memoryRepository.clearHistory(event.userId);
+    emit(state.copyWith(history: []));
   }
 }

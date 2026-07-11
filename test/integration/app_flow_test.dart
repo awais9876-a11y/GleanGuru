@@ -5,8 +5,11 @@ import 'package:integration_test/integration_test.dart';
 import 'package:multimodal_memory_agent/main_entry/app.dart';
 import 'package:multimodal_memory_agent/features/auth/auth_bloc.dart';
 import 'package:multimodal_memory_agent/features/auth/login_screen.dart';
+import 'package:multimodal_memory_agent/features/memory_agent/bloc/memory_agent_bloc.dart';
 import 'package:multimodal_memory_agent/features/memory_agent/memory_home_screen.dart';
 import 'package:multimodal_memory_agent/features/profile/profile_screen.dart';
+import 'package:multimodal_memory_agent/core/database/memory_repository.dart';
+import 'package:multimodal_memory_agent/core/network/qwen_service.dart';
 
 /// Fake AuthService for integration tests: starts signed out, and
 /// successfully "signs in" with any email/password so the login ->
@@ -69,12 +72,21 @@ class _FakeAuthService implements AuthService {
   Future<void> resetPassword(String email) async {}
 }
 
-/// Wraps App with the same BlocProvider it expects in production
-/// (see lib/main.dart), backed by a fresh fake auth service per test.
+/// Wraps App with the same providers it expects in production (see
+/// lib/main.dart), backed by a fresh fake auth service per test and an
+/// in-memory-only (no Firestore) MemoryRepository, so these tests never
+/// touch the network.
 Widget _testApp() {
   final authBloc = AuthBloc(authService: _FakeAuthService());
-  return BlocProvider<AuthBloc>.value(
-    value: authBloc,
+  final memoryAgentBloc = MemoryAgentBloc(
+    qwenService: QwenService(),
+    memoryRepository: MemoryRepository(firestore: null),
+  );
+  return MultiBlocProvider(
+    providers: [
+      BlocProvider<AuthBloc>.value(value: authBloc),
+      BlocProvider<MemoryAgentBloc>.value(value: memoryAgentBloc),
+    ],
     child: App(authBloc: authBloc),
   );
 }

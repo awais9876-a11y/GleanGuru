@@ -1,5 +1,13 @@
 # ---- Stage 1: Build the Flutter web app -----------------------------------
-FROM ghcr.io/cirruslabs/flutter:3.19.0 AS build
+# IMPORTANT: this must be Flutter 3.27+ (bumped from the previous pin of
+# 3.19.0). lib/main_entry/theme_config.dart uses CardThemeData, which does
+# not exist before Flutter 3.27 (ThemeData.cardTheme was CardTheme-typed
+# before that release) - building this repo with Flutter 3.19.0 fails with
+# "Error: Type 'CardThemeData' not found" / "isn't a type". The verified
+# working build (see build_log.txt) used Flutter 3.44.4 on the stable
+# channel; pin to that exact version so local, Vercel, and Docker/Alibaba
+# builds all use the same Flutter version and can't drift apart again.
+FROM ghcr.io/cirruslabs/flutter:3.44.4 AS build
 
 WORKDIR /app
 

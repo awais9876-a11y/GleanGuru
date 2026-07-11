@@ -21,6 +21,12 @@ dependencies:
   shared_preferences: ^2.2.2
   firebase_core: ^3.6.0
   firebase_auth: ^5.3.0
+  # cloud_firestore is the persistence layer for the actual "growing memory
+  # bank" feature. Unlike sqflite (see LocalDatabase), the Firestore SDK
+  # has a real, first-class Flutter Web implementation, so this is what
+  # makes conversation history survive a refresh/new session on both the
+  # Vercel and Alibaba OSS web deployments, not just on mobile.
+  cloud_firestore: ^5.4.0
   # firebase_messaging intentionally omitted: push notifications are not
   # yet wired into the app (see lib/core/network/push_notification_service.dart),
   # and the firebase_messaging web plugin auto-registers unconditionally at

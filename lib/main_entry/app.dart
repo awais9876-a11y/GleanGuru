@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../features/auth/auth_bloc.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/signup_screen.dart';
+import '../features/memory_agent/bloc/memory_agent_bloc.dart';
 import '../features/memory_agent/memory_home_screen.dart';
 import '../features/profile/profile_screen.dart';
 import 'theme_config.dart';
@@ -108,13 +109,25 @@ class App extends StatelessWidget {
   
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Memory Agent',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
-      routerConfig: _router,
+    return BlocListener<AuthBloc, AuthState>(
+      listenWhen: (previous, current) =>
+          previous is AuthAuthenticated && current is AuthUnauthenticated,
+      listener: (context, state) {
+        // Drop the in-memory chat transcript on sign-out so it isn't
+        // visible to whoever signs in next on this device/browser. This
+        // never touches what's already saved in Firestore - that data is
+        // scoped per-uid and simply reloads next time this user signs
+        // back in (see MemoryHomeScreen.didChangeDependencies).
+        context.read<MemoryAgentBloc>().add(MemoryAgentReset());
+      },
+      child: MaterialApp.router(
+        title: 'Memory Agent',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.system,
+        routerConfig: _router,
+      ),
     );
   }
 }

@@ -3,11 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 
 import 'core/auth/firebase_auth_service.dart';
 import 'core/auth/no_op_auth_service.dart';
+import 'core/database/memory_repository.dart';
+import 'core/network/qwen_service.dart';
 import 'features/auth/auth_bloc.dart';
+import 'features/memory_agent/bloc/memory_agent_bloc.dart';
 import 'main_entry/app.dart';
 
 void main() {
@@ -71,9 +75,25 @@ void main() {
     final authService = firebaseAvailable ? FirebaseAuthService() : NoOpAuthService();
     final authBloc = AuthBloc(authService: authService);
 
+    // Only construct a real Firestore-backed MemoryRepository if Firebase
+    // actually initialized - same reasoning as authService above.
+    // MemoryRepository itself also fails soft on every individual
+    // operation, so this is a belt-and-suspenders guard against ever
+    // touching FirebaseFirestore.instance without an app registered.
+    final memoryRepository = MemoryRepository(
+      firestore: firebaseAvailable ? FirebaseFirestore.instance : null,
+    );
+    final memoryAgentBloc = MemoryAgentBloc(
+      qwenService: QwenService(),
+      memoryRepository: memoryRepository,
+    );
+
     runApp(
-      BlocProvider<AuthBloc>.value(
-        value: authBloc,
+      MultiBlocProvider(
+        providers: [
+          BlocProvider<AuthBloc>.value(value: authBloc),
+          BlocProvider<MemoryAgentBloc>.value(value: memoryAgentBloc),
+        ],
         child: App(authBloc: authBloc),
       ),
     );

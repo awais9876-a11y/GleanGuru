@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../auth/auth_bloc.dart';
 
 /// User Profile Management Screen
 class ProfileScreen extends StatefulWidget {
@@ -11,9 +14,22 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _isEditing = false;
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController(text: 'Test User');
-  final _emailController = TextEditingController(text: 'test@example.com');
-  
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  bool _controllersInitialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_controllersInitialized) return;
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthAuthenticated) {
+      _nameController.text = authState.user.name ?? '';
+      _emailController.text = authState.user.email;
+      _controllersInitialized = true;
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -165,7 +181,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              // Perform logout
+              context.read<AuthBloc>().add(SignOutRequested());
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
