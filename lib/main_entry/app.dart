@@ -78,31 +78,43 @@ class App extends StatelessWidget {
       redirect: (context, state) {
         final authState = authBloc.state;
         final isAuthenticated = authState is AuthAuthenticated;
-        final isCheckingAuth = authState is AuthInitial || authState is AuthLoading;
-        final isLoggingIn = state.matchedLocation == '/login' || 
-                           state.matchedLocation == '/signup';
-        final isSplash = state.matchedLocation == '/splash';
-        
-        // Still resolving the initial auth check: stay on splash, don't
-        // redirect anywhere yet.
-        if (isCheckingAuth) {
+        final matchedLocation = state.matchedLocation;
+        final isSplash = matchedLocation == '/splash';
+        final isLoggingIn = matchedLocation == '/login' ||
+            matchedLocation == '/signup';
+
+        // AuthInitial fires exactly once, before SplashScreen has even
+        // dispatched its one-time AuthCheckRequested. Never leave splash
+        // before that first check has resolved at least once.
+        if (authState is AuthInitial) {
           return isSplash ? null : '/splash';
         }
-        
-        // Auth check has resolved: leave splash for the correct destination.
-        if (isSplash) {
-          return isAuthenticated ? '/home' : '/login';
+
+        // AuthLoading fires for EVERY in-flight auth action - not just the
+        // initial boot check, but also every sign-in / sign-up / sign-out /
+        // biometric attempt a signed-out user makes from the login or
+        // signup screen. It used to be lumped in with AuthInitial above,
+        // which force-redirected to /splash on every single sign-in
+        // button press - tearing down the login/signup screen (and the
+        // BlocListener that shows AuthError) before the request had even
+        // resolved. That's what looked like "the page just refreshes,
+        // no error": a forced trip through splash and back to a blank
+        // login form, with the real error lost along the way. Loading
+        // states must never trigger navigation; the current screen shows
+        // its own loading UI instead (see the submit buttons below).
+        if (authState is AuthLoading) {
+          return null;
         }
-        
-        if (!isAuthenticated && !isLoggingIn) {
-          return '/login';
+
+        if (isAuthenticated) {
+          return (isSplash || isLoggingIn) ? '/home' : null;
         }
-        
-        if (isAuthenticated && isLoggingIn) {
-          return '/home';
-        }
-        
-        return null;
+
+        // Not authenticated (AuthUnauthenticated or AuthError) and past
+        // the initial boot check: go to /login, unless already on
+        // /login or /signup - staying put is what lets an AuthError
+        // emitted there actually reach that screen's BlocListener.
+        return isLoggingIn ? null : '/login';
       },
     );
   }

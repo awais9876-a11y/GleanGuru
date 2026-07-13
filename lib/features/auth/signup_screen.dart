@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'auth_bloc.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -144,27 +145,45 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       onFieldSubmitted: (_) => _submitForm(),
                     ),
                     const SizedBox(height: 32),
-                    BlocListener<AuthBloc, AuthState>(
+                    BlocConsumer<AuthBloc, AuthState>(
                       listener: (context, state) {
                         if (state is AuthError) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text(state.message)),
                           );
                         } else if (state is AuthAuthenticated) {
-                          // Navigate to home on success
+                          // No explicit navigation needed here: the
+                          // router's redirect (app.dart) reacts to
+                          // AuthBloc's state via refreshListenable and
+                          // sends an authenticated user on '/signup' to
+                          // '/home' automatically. This just confirms the
+                          // account was actually created, since that
+                          // transition can take a beat.
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Account created!')),
+                          );
                         }
                       },
-                      child: ElevatedButton(
-                        onPressed: _submitForm,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 4),
-                          child: Text('Create Account'),
-                        ),
-                      ),
+                      builder: (context, state) {
+                        final isSubmitting = state is AuthLoading;
+                        return ElevatedButton(
+                          onPressed: isSubmitting ? null : _submitForm,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: isSubmitting
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Text('Create Account'),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 16),
                     TextButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () => context.go('/login'),
                       child: const Text('Already have an account? Sign In'),
                     ),
                   ],

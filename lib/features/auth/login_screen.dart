@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'auth_bloc.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -98,7 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       onFieldSubmitted: (_) => _submitForm(),
                     ),
                     const SizedBox(height: 24),
-                    BlocListener<AuthBloc, AuthState>(
+                    BlocConsumer<AuthBloc, AuthState>(
                       listener: (context, state) {
                         if (state is AuthError) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -106,19 +107,26 @@ class _LoginScreenState extends State<LoginScreen> {
                           );
                         }
                       },
-                      child: ElevatedButton(
-                        onPressed: _submitForm,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 4),
-                          child: Text('Sign In'),
-                        ),
-                      ),
+                      builder: (context, state) {
+                        final isSubmitting = state is AuthLoading;
+                        return ElevatedButton(
+                          onPressed: isSubmitting ? null : _submitForm,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: isSubmitting
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Text('Sign In'),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 16),
                     TextButton(
-                      onPressed: () {
-                        // Navigate to signup
-                      },
+                      onPressed: () => context.go('/signup'),
                       child: const Text("Don't have an account? Sign Up"),
                     ),
                     const Divider(height: 32),
