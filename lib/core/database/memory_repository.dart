@@ -1,5 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// A single unit of the user's knowledge bank: one chat turn, or one
 /// directly-taught fact.
@@ -16,24 +17,19 @@ class MemoryEntry {
     required this.createdAt,
   });
 
-  Map<String, dynamic> toMap() => {
+  Map<String, dynamic> toJson() => {
+        'id': id,
         'role': role,
         'content': content,
-        // serverTimestamp() can't be used for values we also read back
-        // immediately in the same optimistic UI update, but we still want
-        // Firestore's clock (not the client's, which can be skewed) as the
-        // source of truth for ordering once it round-trips.
-        'createdAt': Timestamp.fromDate(createdAt),
+        'createdAt': createdAt.toIso8601String(),
       };
 
-  factory MemoryEntry.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data()!;
-    final ts = data['createdAt'];
+  factory MemoryEntry.fromJson(Map<String, dynamic> json) {
     return MemoryEntry(
-      id: doc.id,
-      role: data['role'] as String? ?? 'user',
-      content: data['content'] as String? ?? '',
-      createdAt: ts is Timestamp ? ts.toDate() : DateTime.now(),
+      id: json['id'] as String? ?? '',
+      role: json['role'] as String? ?? 'user',
+      content: json['content'] as String? ?? '',
+      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
     );
   }
 
@@ -42,117 +38,89 @@ class MemoryEntry {
   Map<String, dynamic> toApiMessage() => {'role': role, 'content': content};
 }
 
-/// Persists the user's growing knowledge bank to Cloud Firestore, scoped
-/// per-user under `users/{uid}/memories/{entryId}`.
+/// Persists the user's growing knowledge bank to on-device storage.
 ///
-/// This is intentionally Firestore-backed rather than SQLite-backed
-/// (compare LocalDatabase): Firestore has a real Flutter Web SDK, so this
-/// is what actually persists across a page refresh / new browser session
-/// on the Vercel and Alibaba OSS deployments - the two targets this
-/// project ships to. SQLite (via sqflite) has no browser implementation
-/// and is skipped entirely on web.
+/// This is deliberately local-only (no account, no server-side database):
+/// on Flutter Web, `shared_preferences` is backed by the browser's
+/// localStorage, so the conversation survives a page refresh / new tab in
+/// the *same browser on the same device*. It is intentionally NOT synced
+/// across devices or browsers - that would require a real backend + auth
+/// (Firestore + Firebase Auth is the natural next step if/when that's
+/// needed again; see README.md).
 ///
-/// Every method fails soft: if Firestore isn't available (Firebase never
-/// initialized - see main.dart's firebaseAvailable check) or a call
-/// errors for any other reason (offline, permission-denied, etc.), methods
-/// log and return an empty/no-op result rather than throwing, so a memory
-/// outage degrades the app to "chat works, nothing is saved this session"
+/// Every method fails soft: if local storage errors for any reason, methods
+/// log and return an empty/no-op result rather than throwing, so a storage
+/// hiccup degrades the app to "chat works, nothing is saved this session"
 /// instead of crashing it.
 class MemoryRepository {
-  final FirebaseFirestore? _firestore;
+  static const _storageKey = 'memory_agent_entries_v1';
 
-  MemoryRepository({FirebaseFirestore? firestore}) : _firestore = firestore;
+  SharedPreferences? _prefs;
 
-  bool get isAvailable => _firestore != null;
-
-  /// Generates a new unique entry ID. Uses Firestore's client-side ID
-  /// generator (works fully offline, no network round-trip needed) when
-  /// available, otherwise falls back to a timestamp-based ID so callers
-  /// can still construct a MemoryEntry when Firestore isn't configured.
-  String newId() {
-    final db = _firestore;
-    if (db != null) return db.collection('_').doc().id;
-    return 'local-${DateTime.now().microsecondsSinceEpoch}';
+  Future<SharedPreferences> _ensurePrefs() async {
+    return _prefs ??= await SharedPreferences.getInstance();
   }
 
-  CollectionReference<Map<String, dynamic>>? _collectionFor(String userId) {
-    final db = _firestore;
-    if (db == null) return null;
-    return db.collection('users').doc(userId).collection('memories');
+  /// Generates a new unique entry ID. Timestamp + a small random suffix is
+  /// enough uniqueness for a single-device, single-user local store.
+  String newId() {
+    final now = DateTime.now();
+    final suffix = (now.microsecond % 10000).toString().padLeft(4, '0');
+    return '${now.microsecondsSinceEpoch}-$suffix';
+  }
+
+  Future<List<MemoryEntry>> _readAll() async {
+    final prefs = await _ensurePrefs();
+    final raw = prefs.getString(_storageKey);
+    if (raw == null || raw.isEmpty) return [];
+    final decoded = jsonDecode(raw) as List<dynamic>;
+    return decoded
+        .map((e) => MemoryEntry.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> _writeAll(List<MemoryEntry> entries) async {
+    final prefs = await _ensurePrefs();
+    final encoded = jsonEncode(entries.map((e) => e.toJson()).toList());
+    await prefs.setString(_storageKey, encoded);
   }
 
   /// One-shot fetch of the most recent [limit] entries, oldest-first (the
   /// order a chat transcript / LLM context window expects).
-  Future<List<MemoryEntry>> loadRecentHistory(
-    String userId, {
-    int limit = 50,
-  }) async {
-    final collection = _collectionFor(userId);
-    if (collection == null) return [];
-
+  Future<List<MemoryEntry>> loadRecentHistory({int limit = 50}) async {
     try {
-      final snapshot = await collection
-          .orderBy('createdAt', descending: true)
-          .limit(limit)
-          .get();
-      return snapshot.docs.map(MemoryEntry.fromDoc).toList().reversed.toList();
+      final all = await _readAll();
+      all.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      if (all.length <= limit) return all;
+      return all.sublist(all.length - limit);
     } catch (e) {
       debugPrint('MemoryRepository.loadRecentHistory failed: $e');
       return [];
     }
   }
 
-  /// Appends one entry (a user message, an assistant reply, or a
-  /// directly-taught fact) to this user's permanent knowledge bank.
-  Future<void> addEntry(String userId, MemoryEntry entry) async {
-    final collection = _collectionFor(userId);
-    if (collection == null) return;
-
+  /// Appends several entries (used after a chat turn, to write the user's
+  /// message and the assistant's reply together).
+  Future<void> addEntries(List<MemoryEntry> entries) async {
+    if (entries.isEmpty) return;
     try {
-      await collection.doc(entry.id).set(entry.toMap());
+      final all = await _readAll();
+      all.addAll(entries);
+      await _writeAll(all);
     } catch (e) {
-      debugPrint('MemoryRepository.addEntry failed: $e');
+      debugPrint('MemoryRepository.addEntries failed: $e');
       // Intentionally swallowed: the caller already has the entry in its
       // in-memory state for this session; a failed write means it just
       // won't survive a refresh, which is a soft degradation, not a crash.
     }
   }
 
-  /// Appends several entries as a single atomic batch (used after a chat
-  /// turn, to write the user's message and the assistant's reply together).
-  Future<void> addEntries(String userId, List<MemoryEntry> entries) async {
-    final collection = _collectionFor(userId);
-    if (collection == null || entries.isEmpty) return;
-
+  /// Permanently deletes this device's entire knowledge bank ("forget
+  /// everything").
+  Future<void> clearHistory() async {
     try {
-      final batch = _firestore!.batch();
-      for (final entry in entries) {
-        batch.set(collection.doc(entry.id), entry.toMap());
-      }
-      await batch.commit();
-    } catch (e) {
-      debugPrint('MemoryRepository.addEntries failed: $e');
-    }
-  }
-
-  /// Permanently deletes this user's entire knowledge bank ("forget
-  /// everything"). Deletes in batches of 400 to stay under Firestore's
-  /// 500-writes-per-batch limit.
-  Future<void> clearHistory(String userId) async {
-    final collection = _collectionFor(userId);
-    if (collection == null) return;
-
-    try {
-      QuerySnapshot<Map<String, dynamic>> snapshot;
-      do {
-        snapshot = await collection.limit(400).get();
-        if (snapshot.docs.isEmpty) break;
-        final batch = _firestore!.batch();
-        for (final doc in snapshot.docs) {
-          batch.delete(doc.reference);
-        }
-        await batch.commit();
-      } while (snapshot.docs.length == 400);
+      final prefs = await _ensurePrefs();
+      await prefs.remove(_storageKey);
     } catch (e) {
       debugPrint('MemoryRepository.clearHistory failed: $e');
     }

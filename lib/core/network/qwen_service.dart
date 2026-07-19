@@ -28,7 +28,7 @@ class QwenService {
       final messages = [
         {
           "role": "system",
-          "content": "You are Memory Agent, a helpful AI assistant integrated into a mobile app.",
+          "content": "You are Memory Agent, a helpful AI assistant that remembers what the user teaches it.",
         },
         if (history != null) ...history,
         {"role": "user", "content": prompt},

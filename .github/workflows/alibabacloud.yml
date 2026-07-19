@@ -1,6 +1,5 @@
 name: Deploy Flutter Web to Alibaba Cloud
 
-# This tells GitHub to run this script automatically every time someone pushes code to the 'main' branch
 on:
   push:
     branches:
@@ -8,52 +7,36 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest # Spins up a clean Linux machine in the cloud
+    runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Download your source code onto the runner machine
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Step 2: Install Java (Required for baseline mobile/web building tasks)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      # Step 3: Download and install the specific Flutter environment
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           architecture: x64
 
-      # Step 4: Fetch external packages listed in your pubspec.yaml file
       - name: Install Dependencies
         run: flutter pub get
 
-      # Step 5: Compile the app into production-ready Web assets (HTML, JS, CSS)
-      # --source-maps: lets browser DevTools show real Dart file:line locations
-      # in stack traces instead of unreadable minified JS frame names.
       - name: Build Flutter Web App
         run: flutter build web --release --source-maps --base-href "/"
 
-      # Step 6: Install and configure the Alibaba Cloud CLI directly.
-      # IMPORTANT: region and bucket are read from GitHub Secrets, not
-      # hardcoded here - a previously hardcoded placeholder ('us-west-1',
-      # 'my-flutter-app-space') is exactly what caused
-      # "config failed: region can't be empty" and would have silently
-      # deployed to the wrong (nonexistent) bucket even if it hadn't.
-      #
-      # Set these in: GitHub repo -> Settings -> Secrets and variables ->
-      # Actions -> New repository secret:
+      # region and bucket come from GitHub Secrets - set these in:
+      # repo -> Settings -> Secrets and variables -> Actions:
       #   ALIBABA_ACCESS_KEY_ID
       #   ALIBABA_ACCESS_KEY_SECRET
-      #   ALIBABA_OSS_REGION       (e.g. oss-us-west-1, oss-cn-hangzhou - see
-      #                             your bucket's overview page in the OSS
-      #                             console for the exact region code)
-      #   ALIBABA_OSS_BUCKET       (your actual bucket name, no oss:// prefix)
+      #   ALIBABA_OSS_REGION   (e.g. oss-us-west-1, oss-cn-hangzhou)
+      #   ALIBABA_OSS_BUCKET   (your bucket name, no oss:// prefix)
       - name: Setup Alibaba Cloud CLI
         uses: aliyun/aliyun-cli-action@v1
         with:
@@ -62,36 +45,13 @@ jobs:
           access-key-secret: ${{ secrets.ALIBABA_ACCESS_KEY_SECRET }}
           region: ${{ secrets.ALIBABA_OSS_REGION }}
 
-      # Step 7: Configure the bucket for static website hosting.
-      # Without this, OSS serves each file as a plain object with no
-      # routing awareness - a deep link or page refresh on a client-side
-      # route (e.g. /home, /profile, handled by go_router) returns OSS's
-      # raw "NoSuchKey" XML error instead of your app. Setting both the
-      # index document AND the error document to index.html makes OSS
-      # fall back to your Flutter app for any unmatched path, the same
-      # way Vercel's rewrite rule and the Docker/nginx SPA fallback do.
       - name: Configure OSS static website hosting (SPA fallback)
-        # `aliyun oss website --method put` does NOT take --index-document /
-        # --error-document as CLI flags (that was the "invalid flag
-        # index-document" build failure). It takes an XML config file as its
-        # positional argument instead. oss-website-config.xml (committed at
-        # the repo root) sets both IndexDocument and ErrorDocument to
-        # index.html, so any unmatched path (e.g. a go_router deep link)
-        # falls back to the Flutter app shell instead of OSS's raw
-        # "NoSuchKey" XML error.
         run: |
           aliyun oss website --method put oss://${{ secrets.ALIBABA_OSS_BUCKET }} oss-website-config.xml
 
-      # Step 8: Push files to the OSS bucket and remove deprecated old files.
       - name: Sync Files to Alibaba OSS
         run: |
           aliyun oss sync ./build/web/ oss://${{ secrets.ALIBABA_OSS_BUCKET }}/ --delete --region ${{ secrets.ALIBABA_OSS_REGION }}
 
-      # NOTE: this deploys pure static files only. It does NOT include a
-      # backend, so POST /api/chat (the Qwen chat proxy) will NOT work
-      # through this OSS deployment - OSS is static object storage with no
-      # server-side code execution. If you need the chat feature working
-      # on Alibaba Cloud, deploy the Dockerfile in this repo instead (to
-      # ECS, ACK, or Simple Application Server), which runs server.js and
-      # implements the same /api/chat contract as the Vercel deployment.
-      # See README.md for details.
+      # NOTE: pure static deploy only - /api/chat will NOT work through OSS.
+      # Use the Dockerfile (ECS/ACK/SAE) if you need chat working on Alibaba.

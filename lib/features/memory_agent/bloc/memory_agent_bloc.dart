@@ -5,59 +5,46 @@ import '../../../core/network/qwen_service.dart';
 
 // --- Events ---
 abstract class MemoryAgentEvent extends Equatable {
+  const MemoryAgentEvent();
+
   @override
   List<Object?> get props => [];
 }
 
-/// Loads this user's existing knowledge bank from Firestore. Dispatched
-/// once when the chat screen first opens for a signed-in user.
+/// Loads this device's existing knowledge bank from local storage.
+/// Dispatched once when the chat screen first opens.
 class LoadMemoryRequested extends MemoryAgentEvent {
-  final String userId;
-  LoadMemoryRequested({required this.userId});
-
-  @override
-  List<Object?> get props => [userId];
+  const LoadMemoryRequested();
 }
 
 class SendMessageEvent extends MemoryAgentEvent {
-  final String userId;
   final String message;
 
-  SendMessageEvent({required this.userId, required this.message});
+  const SendMessageEvent({required this.message});
 
   @override
-  List<Object?> get props => [userId, message];
+  List<Object?> get props => [message];
 }
 
-/// Permanently deletes the signed-in user's entire knowledge bank.
+/// Permanently deletes this device's entire knowledge bank.
 class ClearMemoryRequested extends MemoryAgentEvent {
-  final String userId;
-  ClearMemoryRequested({required this.userId});
-
-  @override
-  List<Object?> get props => [userId];
+  const ClearMemoryRequested();
 }
-
-/// Discards in-memory chat state (used on sign-out) without touching what's
-/// already persisted in Firestore.
-class MemoryAgentReset extends MemoryAgentEvent {}
 
 // --- State ---
 /// A single immutable snapshot of the conversation. One state class (not a
-/// hierarchy) so the UI always has `history` + `isSending` +
-/// `isMemoryPersisted` to render, no matter what just happened.
+/// hierarchy) so the UI always has `history` + `isSending` to render, no
+/// matter what just happened.
 class MemoryAgentState extends Equatable {
   final List<MemoryEntry> history;
   final bool isLoadingHistory;
   final bool isSending;
-  final bool isMemoryPersisted;
   final String? errorMessage;
 
   const MemoryAgentState({
     this.history = const [],
     this.isLoadingHistory = false,
     this.isSending = false,
-    this.isMemoryPersisted = false,
     this.errorMessage,
   });
 
@@ -65,7 +52,6 @@ class MemoryAgentState extends Equatable {
     List<MemoryEntry>? history,
     bool? isLoadingHistory,
     bool? isSending,
-    bool? isMemoryPersisted,
     String? errorMessage,
     bool clearError = false,
   }) {
@@ -73,14 +59,12 @@ class MemoryAgentState extends Equatable {
       history: history ?? this.history,
       isLoadingHistory: isLoadingHistory ?? this.isLoadingHistory,
       isSending: isSending ?? this.isSending,
-      isMemoryPersisted: isMemoryPersisted ?? this.isMemoryPersisted,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 
   @override
-  List<Object?> get props =>
-      [history, isLoadingHistory, isSending, isMemoryPersisted, errorMessage];
+  List<Object?> get props => [history, isLoadingHistory, isSending, errorMessage];
 }
 
 // --- BLoC ---
@@ -89,12 +73,9 @@ class MemoryAgentBloc extends Bloc<MemoryAgentEvent, MemoryAgentState> {
   final MemoryRepository _memoryRepository;
 
   /// How many recent turns are sent back to the model as context. Keeps the
-  /// request payload/latency bounded as a user's knowledge bank grows into
-  /// the hundreds or thousands of entries - the model still gets recent
-  /// conversational context; it isn't full long-term-memory retrieval
-  /// (that would need embeddings + vector search - a good next step, out
-  /// of scope for this pass), but every entry is still saved permanently
-  /// and reloaded in full next time the user opens the app.
+  /// request payload/latency bounded as the local knowledge bank grows -
+  /// the model still gets recent conversational context, but every entry is
+  /// still saved permanently and reloaded in full next time the app opens.
   static const int _contextWindowSize = 30;
 
   MemoryAgentBloc({
@@ -106,7 +87,6 @@ class MemoryAgentBloc extends Bloc<MemoryAgentEvent, MemoryAgentState> {
     on<LoadMemoryRequested>(_onLoadMemory);
     on<SendMessageEvent>(_onSendMessage);
     on<ClearMemoryRequested>(_onClearMemory);
-    on<MemoryAgentReset>((event, emit) => emit(const MemoryAgentState()));
   }
 
   Future<void> _onLoadMemory(
@@ -114,12 +94,8 @@ class MemoryAgentBloc extends Bloc<MemoryAgentEvent, MemoryAgentState> {
     Emitter<MemoryAgentState> emit,
   ) async {
     emit(state.copyWith(isLoadingHistory: true, clearError: true));
-    final history = await _memoryRepository.loadRecentHistory(event.userId);
-    emit(state.copyWith(
-      history: history,
-      isLoadingHistory: false,
-      isMemoryPersisted: _memoryRepository.isAvailable,
-    ));
+    final history = await _memoryRepository.loadRecentHistory();
+    emit(state.copyWith(history: history, isLoadingHistory: false));
   }
 
   Future<void> _onSendMessage(
@@ -167,10 +143,10 @@ class MemoryAgentBloc extends Bloc<MemoryAgentEvent, MemoryAgentState> {
       final finalHistory = [...historyWithUserMessage, assistantEntry];
       emit(state.copyWith(history: finalHistory, isSending: false));
 
-      // Persist both turns permanently. This is the actual "growing
-      // knowledge bank" write - it happens after the UI already updated,
-      // so a slow/failed write never blocks or breaks the chat experience.
-      await _memoryRepository.addEntries(event.userId, [userEntry, assistantEntry]);
+      // Persist both turns permanently. This happens after the UI already
+      // updated, so a slow/failed write never blocks or breaks the chat
+      // experience.
+      await _memoryRepository.addEntries([userEntry, assistantEntry]);
     } catch (e) {
       emit(state.copyWith(
         isSending: false,
@@ -183,7 +159,7 @@ class MemoryAgentBloc extends Bloc<MemoryAgentEvent, MemoryAgentState> {
     ClearMemoryRequested event,
     Emitter<MemoryAgentState> emit,
   ) async {
-    await _memoryRepository.clearHistory(event.userId);
+    await _memoryRepository.clearHistory();
     emit(state.copyWith(history: []));
   }
 }

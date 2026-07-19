@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../auth/auth_bloc.dart';
 import 'bloc/memory_agent_bloc.dart';
 
-/// Memory Agent chat screen. This is the actual product: a chat interface
-/// backed by MemoryAgentBloc, whose every turn is permanently saved to the
-/// signed-in user's Firestore-backed knowledge bank (see MemoryRepository)
-/// and reloaded the next time they open the app.
+/// Memory Agent chat screen. This is the entire product for now: a chat
+/// interface backed by MemoryAgentBloc, whose every turn is permanently
+/// saved to this device's local knowledge bank (see MemoryRepository) and
+/// reloaded the next time the app opens in this browser/device.
 class MemoryHomeScreen extends StatefulWidget {
   const MemoryHomeScreen({super.key});
 
@@ -18,20 +17,12 @@ class MemoryHomeScreen extends StatefulWidget {
 class _MemoryHomeScreenState extends State<MemoryHomeScreen> {
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
-  String? _userId;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // The router only ever lets an authenticated user reach '/home' (see
-    // app.dart's redirect logic), so AuthAuthenticated is the expected
-    // state here. Load this user's existing knowledge bank exactly once
-    // per session.
-    final authState = context.read<AuthBloc>().state;
-    if (authState is AuthAuthenticated && _userId != authState.user.id) {
-      _userId = authState.user.id;
-      context.read<MemoryAgentBloc>().add(LoadMemoryRequested(userId: _userId!));
-    }
+  void initState() {
+    super.initState();
+    // Load once when the screen first mounts.
+    context.read<MemoryAgentBloc>().add(const LoadMemoryRequested());
   }
 
   @override
@@ -43,8 +34,8 @@ class _MemoryHomeScreenState extends State<MemoryHomeScreen> {
 
   void _send() {
     final text = _inputController.text.trim();
-    if (text.isEmpty || _userId == null) return;
-    context.read<MemoryAgentBloc>().add(SendMessageEvent(userId: _userId!, message: text));
+    if (text.isEmpty) return;
+    context.read<MemoryAgentBloc>().add(SendMessageEvent(message: text));
     _inputController.clear();
     // Let the new bubble render before scrolling to it.
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
@@ -60,14 +51,13 @@ class _MemoryHomeScreenState extends State<MemoryHomeScreen> {
   }
 
   Future<void> _confirmClearMemory() async {
-    if (_userId == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Clear knowledge bank?'),
         content: const Text(
           'This permanently deletes everything Memory Agent has learned '
-          'from your conversations. This cannot be undone.',
+          'from your conversations on this device. This cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -83,7 +73,7 @@ class _MemoryHomeScreenState extends State<MemoryHomeScreen> {
       ),
     );
     if (confirmed == true && mounted) {
-      context.read<MemoryAgentBloc>().add(ClearMemoryRequested(userId: _userId!));
+      context.read<MemoryAgentBloc>().add(const ClearMemoryRequested());
     }
   }
 
@@ -111,22 +101,11 @@ class _MemoryHomeScreenState extends State<MemoryHomeScreen> {
         builder: (context, state) {
           return Column(
             children: [
-              if (!state.isMemoryPersisted && !state.isLoadingHistory)
-                Container(
-                  width: double.infinity,
-                  color: Colors.amber.shade100,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: const Text(
-                    'Memory storage is unavailable right now - this '
-                    'conversation will not be saved after you leave.',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ),
               Expanded(
                 child: state.isLoadingHistory
                     ? const Center(child: CircularProgressIndicator())
                     : state.history.isEmpty
-                        ? _EmptyState()
+                        ? const _EmptyState()
                         : ListView.builder(
                             controller: _scrollController,
                             padding: const EdgeInsets.all(16),
@@ -159,6 +138,8 @@ class _MemoryHomeScreenState extends State<MemoryHomeScreen> {
 }
 
 class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -176,7 +157,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Everything you teach Memory Agent here is saved permanently '
+              'Everything you teach Memory Agent here is saved on this device '
               'and remembered next time you open the app.',
               style: Theme.of(context)
                   .textTheme

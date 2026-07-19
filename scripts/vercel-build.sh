@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Vercel's build image does not include the Flutter SDK, so we fetch a
 # pinned stable release ourselves, then build the Flutter web app.
-# This script is invoked via vercel.json -> "buildCommand".
 set -euo pipefail
 
 FLUTTER_DIR="$HOME/flutter"

@@ -1,5 +1,5 @@
 name: multimodal_memory_agent
-description: A multimodal memory agent with Qwen AI integration.
+description: A simple memory agent chat app with Qwen (Dashscope) AI integration.
 publish_to: "none"
 version: 1.0.0+1
 
@@ -11,51 +11,19 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.6
   http: ^1.2.0
-  dio: ^5.4.0
-  connectivity_plus: ^6.0.0
   flutter_bloc: ^8.1.3
   bloc: ^8.1.2
   equatable: ^2.0.5
-  get_it: ^7.6.7
-  go_router: ^12.1.1
+  # Local, on-device persistence for the chat history / "knowledge bank".
+  # Works out of the box on Flutter Web (backed by browser localStorage)
+  # and on every other platform (backed by native prefs) - no server-side
+  # database needed for the current, simplified scope of this app.
   shared_preferences: ^2.2.2
-  firebase_core: ^3.6.0
-  firebase_auth: ^5.3.0
-  # cloud_firestore is the persistence layer for the actual "growing memory
-  # bank" feature. Unlike sqflite (see LocalDatabase), the Firestore SDK
-  # has a real, first-class Flutter Web implementation, so this is what
-  # makes conversation history survive a refresh/new session on both the
-  # Vercel and Alibaba OSS web deployments, not just on mobile.
-  cloud_firestore: ^5.4.0
-  # firebase_messaging intentionally omitted: push notifications are not
-  # yet wired into the app (see lib/core/network/push_notification_service.dart),
-  # and the firebase_messaging web plugin auto-registers unconditionally at
-  # app boot even when unused, requiring a firebase-messaging-sw.js service
-  # worker this project doesn't have. Add it back only once push
-  # notifications are actually implemented, together with that service
-  # worker file in web/.
-  google_sign_in: ^6.1.6
-  sign_in_with_apple: ^5.0.0
-  local_auth: ^2.3.0
-  flutter_secure_storage: ^9.0.0
-  jwt_decoder: ^2.0.1
-  encrypt: ^5.0.3 # For AES-GCM
-  path_provider: ^2.1.1
-  path: ^1.9.0
-  sqflite: ^2.3.0
-  sqflite_common_ffi: ^2.3.0 # For web/desktop support simulation if needed
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  integration_test:
-    sdk: flutter
   flutter_lints: ^2.0.0
-  bloc_test: ^9.1.5
-  mockito: ^5.4.4
-  build_runner: ^2.4.8
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/images/

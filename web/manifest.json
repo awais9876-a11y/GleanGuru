@@ -5,7 +5,7 @@
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
-  "description": "A multimodal memory agent with Qwen AI integration.",
+  "description": "A simple memory agent chat app with Qwen AI integration.",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
   "icons": [

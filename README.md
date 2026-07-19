@@ -1,13 +1,37 @@
-# GleanGuru (Memory Agent)
+# Memory Agent (simplified core build)
 
-A Flutter web app that helps you build your own multimodal knowledge base
-over time, with a Qwen (Alibaba Dashscope) powered chat agent.
+A Flutter web app: chat with a Qwen (Alibaba Dashscope) AI, and everything
+you send/teach it is saved to your **own device's local storage** so it's
+remembered next time you open the app in the same browser.
+
+This is a deliberately trimmed-down version of the project for a fast,
+low-risk submission: **no accounts, no sign-in, no Firebase, no cloud
+database.** Just the core loop — chat in, memory persisted, chat out — with
+both deploy targets (Vercel and Alibaba Cloud) fully working.
+
+## What changed from the earlier Firebase-based version
+
+| Before | Now |
+|---|---|
+| Firebase Auth (email/Google/Apple sign-in) | Removed - no accounts at all |
+| Cloud Firestore (`users/{uid}/memories`) | Replaced with on-device `shared_preferences` storage |
+| go_router + splash/login/signup/profile screens | Removed - the app is a single chat screen |
+| Biometric auth, token manager, encryption engine, offline sync engine | Removed - all of it was either auth-dependent or unused dead code |
+
+**What this means in practice:** your knowledge bank lives in *this specific
+browser, on this specific device*. Clearing browser data / using a different
+browser / a different device starts a fresh, empty knowledge bank. If you
+need it to follow a person across devices later, that's exactly what
+Firebase Auth + Firestore give you back — the earlier version of this project
+already had that wiring and can be restored from git history / your prior
+version whenever multi-device sync becomes a real requirement, without
+touching the chat/UI code in this build.
 
 ## Project structure
 
 ```
-lib/            Flutter app (BLoC state management, go_router navigation)
-web/            Flutter web template (index.html, manifest.json, icons)
+lib/            Flutter app (BLoC state management, single screen, no routing)
+web/            Flutter web template (index.html, manifest.json)
 api/chat.js     Vercel Edge Function - proxies chat requests to Dashscope
 server.js       Node/Express server - same proxy, for Docker/Alibaba Cloud
 scripts/        Build scripts (Vercel build step installs Flutter itself)
@@ -15,106 +39,19 @@ Dockerfile      Multi-stage build: Flutter web build -> Node runtime image
 nginx.conf      Reference config for pure static hosting (see note in file)
 ```
 
-## Why the app previously 404'd on Vercel
+## How the memory bank works
 
-Vercel had no idea this was a Flutter project. There was no `buildCommand`
-in `vercel.json`, so Vercel never actually ran `flutter build web` — it just
-served the raw repo, which has no root `index.html`. On top of that, the
-Flutter build itself would have failed for several independent reasons even
-if Vercel had tried to run it:
-
-- `lib/main.dart` (the required entry point) didn't exist.
-- `pubspec.yaml` declared an asset folder (`assets/images/`) that didn't
-  exist anywhere in the repo — `flutter build` fails hard on this.
-- Several packages were imported in code but missing from `pubspec.yaml`
-  (`dio`, `connectivity_plus`, `firebase_messaging`, `flutter_secure_storage`,
-  `get_it`, `jwt_decoder`).
-- `encryption_engine.dart` and `token_manager.dart` each declared their own
-  `IOSOptions` / `AndroidOptions` / `KeychainAccessibility` classes with the
-  same names as the real ones already provided by the `flutter_secure_storage`
-  package they import — a guaranteed name-collision compile error.
-- `sync_engine.dart` referenced `LocalDatabase` without importing it, and
-  used an `ApiClient` interface that had no relationship to the concrete
-  `ApiClient` class in `api_client.dart` (same name, two unrelated types).
-- `Icons.brain` isn't a real Material icon (used in `app.dart` and
-  `login_screen.dart`).
-- `biometric_service.dart` called `LocalAuthentication.isDeviceLockedOut()`,
-  a method that doesn't exist in the `local_auth` package.
-- No concrete `AuthService` implementation existed anywhere, so nothing
-  could actually be wired up in a `main.dart` even once one was added.
-
-All of the above are fixed in this branch. See the pull request description
-for the full list of changes.
-
-## Deploying to Vercel
-
-1. Import the repo in Vercel as normal (framework preset: **Other**).
-2. Set the environment variable `QWEN_API_KEY` (Project Settings ->
-   Environment Variables) to your Dashscope API key.
-3. Optionally set `DASHSCOPE_ENDPOINT` if you use the Mainland China
-   endpoint instead of the international one (see `.env.example`).
-4. Deploy. `vercel.json` now defines:
-   - `installCommand`: `npm install` (only needed for `server.js`'s
-     dependency, harmless on Vercel)
-   - `buildCommand`: `bash scripts/vercel-build.sh` — this clones the
-     Flutter SDK (stable channel) into the build container and runs
-     `flutter build web --release`
-   - `outputDirectory`: `build/web`
-   - a SPA rewrite so client-side routes (`/home`, `/profile`, ...) don't
-     404 on refresh, while `/api/*` still reaches `api/chat.js`
-
-First builds will take a few minutes longer than a typical Vercel deploy
-because Flutter itself has to be installed in the build container — this is
-expected and normal for Flutter-on-Vercel deployments.
-
-## Deploying to Alibaba Cloud (or any Docker host)
-
-```bash
-docker build -t glean-guru .
-docker run -p 8080:8080 \
-  -e QWEN_API_KEY=your_key_here \
-  -e DASHSCOPE_ENDPOINT=https://dashscope.aliyuncs.com/api/v1 \
-  glean-guru
-```
-
-The image builds the Flutter web app in stage 1, then serves it from a
-small Node/Express server (`server.js`) that also implements `POST
-/api/chat` — the same contract as the Vercel edge function — so the chat
-feature works identically on both platforms without any client-side code
-differences.
-
-Push the image to Alibaba Cloud Container Registry (ACR) and run it on
-ECS, ACK (Kubernetes), or Serverless App Engine (SAE); all three just need
-the `QWEN_API_KEY` environment variable set on the container/service.
-
-If you'd rather host purely static files (e.g. via OSS + CDN) instead of a
-container, `nginx.conf` is kept as a reference config for that — but note
-it has no `/api/chat` route, so you'd need to provide that separately (e.g.
-Alibaba Function Compute) for the chat feature to work.
-
-### Automated static deploy via GitHub Actions (`.github/workflows/alibabacloud.yml`)
-
-This repo also includes a workflow that automatically builds and syncs the
-static web build to an Alibaba Cloud OSS bucket on every push to `main`.
-This is a **separate, pure-static deployment path** from the Docker
-instructions above — same tradeoff applies: `/api/chat` will not work
-through this path, since OSS is object storage with no server-side code
-execution.
-
-Required GitHub Secrets (repo → Settings → Secrets and variables → Actions):
-
-| Secret | Value |
-|---|---|
-| `ALIBABA_ACCESS_KEY_ID` | From Alibaba Cloud RAM console |
-| `ALIBABA_ACCESS_KEY_SECRET` | From Alibaba Cloud RAM console |
-| `ALIBABA_OSS_REGION` | Your bucket's region code, e.g. `oss-us-west-1` or `oss-cn-hangzhou` — find this on your bucket's overview page in the OSS console |
-| `ALIBABA_OSS_BUCKET` | Your actual bucket name (no `oss://` prefix) |
-
-The workflow also configures the bucket's static website hosting (index
-and error document both set to `index.html`), which is required for
-client-side routes (`/home`, `/profile`, handled by `go_router`) to work
-on refresh or direct link — without it, OSS returns a raw XML error
-instead of your app for any URL that isn't the bucket root.
+- Every chat turn (`role: user` / `role: assistant`) is written locally via
+  `MemoryRepository`, backed by `shared_preferences` (browser `localStorage`
+  on web).
+- On opening the app, the most recent entries load automatically and the
+  conversation picks up where it left off - in that browser, on that device.
+- Only the most recent ~30 entries are replayed back to Qwen as context per
+  request (`MemoryAgentBloc._contextWindowSize`), to keep request size and
+  latency bounded as history grows. Everything is still saved in full; this
+  only limits how much of it the model sees on any single turn.
+- The trash icon in the app bar permanently deletes everything stored on this
+  device - there's no undo.
 
 ## Local development
 
@@ -123,33 +60,8 @@ flutter pub get
 flutter run -d chrome
 ```
 
-### Important: commit `pubspec.lock`
-
-This repo does not currently have a committed `pubspec.lock`. Without it,
-every build (including on Vercel) re-resolves the entire dependency graph
-from scratch against whatever the newest published versions happen to be
-at that moment — which means a build that works today can fail tomorrow
-for reasons completely unrelated to any code change, purely because an
-upstream package (most commonly the Firebase family) published a new
-release with a different internal version requirement.
-
-Fix this once, permanently:
-
-```bash
-flutter pub get          # resolves everything, writes pubspec.lock
-git add pubspec.lock
-git commit -m "Commit pubspec.lock to freeze dependency resolution"
-git push
-```
-
-If you don't have Flutter installed locally, open the repo in a GitHub
-Codespace (free tier is sufficient), install Flutter there, run the
-commands above, and push. After this, Vercel builds install the exact
-locked versions every time instead of re-solving, and this class of
-"version solving failed" error stops recurring.
-
-To exercise the chat feature locally, run the Node server instead so
-`/api/chat` is available:
+To exercise the chat feature locally (talks to real Dashscope), run the Node
+server instead so `/api/chat` is available:
 
 ```bash
 flutter build web
@@ -158,69 +70,130 @@ QWEN_API_KEY=your_key_here node server.js
 # open http://localhost:8080
 ```
 
-## Firebase setup (required for sign-in AND the memory bank)
+### First-time setup: generate `pubspec.lock`
 
-This app expects a Firebase project for email/Google/Apple sign-in
-(`lib/core/auth/firebase_auth_service.dart`, wired up in `lib/main.dart`)
-**and** for persisting the user's knowledge bank
-(`lib/core/database/memory_repository.dart`, backed by Cloud Firestore).
-`Firebase.initializeApp()` is wrapped in a try/catch so the app still boots
-without one, but sign-in and memory persistence will not work until you:
+This build doesn't ship a `pubspec.lock` (dependencies changed enough from
+the prior version that the old lockfile no longer applies). Generate and
+commit one **once**, immediately after unpacking this project, so every
+future build (including Vercel/CI) resolves the exact same dependency
+versions instead of re-solving from scratch every time:
 
-1. Create a Firebase project and register a Web app.
-2. Add the Firebase Web SDK config (see FlutterFire docs) so
-   `Firebase.initializeApp()` can find your project config on web.
-3. Enable the Email/Password, Google, and Apple sign-in providers you want
-   to use in the Firebase console.
-4. **Create a Cloud Firestore database** for the project (Firebase console
-   -> Build -> Firestore Database -> Create database). Any region is fine;
-   the app doesn't depend on which one.
-5. **Deploy the security rules in `firestore.rules`** so the app can
-   actually read/write the `users/{uid}/memories` collection - by default
-   Firestore denies all access, and the app has no way to deploy rules for
-   itself:
-   ```bash
-   npm install -g firebase-tools   # one-time
-   firebase login
-   firebase use <your-firebase-project-id>
-   firebase deploy --only firestore:rules
-   ```
-   Until this is done, chat still works (messages go to Qwen and back),
-   but nothing is saved - `MemoryHomeScreen` shows a "memory storage is
-   unavailable" banner and every conversation resets on refresh.
+```bash
+flutter pub get          # resolves everything, writes pubspec.lock
+git add pubspec.lock
+git commit -m "Commit pubspec.lock to freeze dependency resolution"
+```
 
-## How the memory bank actually works
+### App icons
 
-- Every chat turn (`role: user` / `role: assistant`) is written to
-  `users/{uid}/memories/{entryId}` in Firestore via `MemoryRepository`,
-  scoped to the signed-in user only (enforced by `firestore.rules`, not
-  just client-side).
-- On opening the chat screen, `MemoryHomeScreen` loads the user's most
-  recent entries and the conversation picks up where it left off - across
-  devices, browsers, and sessions, not just within one tab.
-- Only the most recent ~30 entries are replayed back to Qwen as context per
-  request (`MemoryAgentBloc._contextWindowSize`), to keep request size and
-  latency bounded as a user's history grows into the hundreds of entries.
-  Everything is still saved in full; this only limits how much of it the
-  model sees on any single turn. Retrieval-based recall over the *entire*
-  history (embeddings + vector search, so the model can pull in a relevant
-  fact from months ago even if it's outside the recent-30 window) is a
-  natural next step, not yet implemented.
-- "Clear knowledge bank" (trash icon in the chat app bar) permanently
-  deletes a user's entries from Firestore - there's no undo.
-- This deliberately does **not** use `LocalDatabase` (SQLite via sqflite):
-  sqflite has no Flutter Web implementation, so anything stored there would
-  never persist on the Vercel or Alibaba OSS deployments, which are both
-  web builds.
+`web/manifest.json` and `web/index.html` reference `web/icons/Icon-192.png`,
+`web/icons/Icon-512.png`, two maskable variants, and `web/favicon.png`. Those
+binary image files aren't part of this text-based rebuild - if you had them
+in your previous version of this repo, copy that `web/icons/` folder and
+`web/favicon.png` back in. If you don't have them yet, the app still builds
+and runs fine without them (the browser just won't show a custom tab icon
+until you add them).
 
 ## Tests
 
 ```bash
 flutter pub get
-flutter pub run build_runner build --delete-conflicting-outputs   # generates test/unit/auth_bloc_test.mocks.dart
-flutter test test/unit
+flutter test
 ```
 
-`test/integration/app_flow_test.dart` uses the `integration_test` package
-and is intended to be run on a device/emulator or via `flutter drive`,
-not as a plain unit test.
+`test/widget_test.dart` is a minimal smoke test: it boots the app with a
+mocked local-storage backend and confirms the empty-state screen renders. It
+deliberately never sends a chat message, so it never makes a real network
+call.
+
+---
+
+## Deploying to Vercel
+
+1. Push this project to a GitHub repo.
+2. Go to https://vercel.com, sign in with GitHub, **Add New → Project →
+   Import** this repo.
+3. Framework preset: **Other**.
+4. Project Settings → Environment Variables, add:
+   - `QWEN_API_KEY` = your Dashscope API key (**required** - see below for
+     how to get one)
+   - `DASHSCOPE_ENDPOINT` = only set this if your key is from the Mainland
+     China Dashscope console: `https://dashscope.aliyuncs.com/api/v1`
+5. Deploy. `vercel.json` already defines the build (`scripts/vercel-build.sh`
+   installs Flutter inside the build container, then runs
+   `flutter build web --release`) - the first build takes a few minutes
+   longer than a typical Vercel deploy because of that Flutter install; this
+   is expected.
+6. Once deployed, open the URL, send a chat message, and confirm you get a
+   reply. If you see "Missing QWEN_API_KEY environment variable" in the
+   response, go back to step 4.
+
+## Deploying to Alibaba Cloud
+
+Two independent paths - pick based on whether you need chat to work:
+
+### Path A — Docker container (chat works)
+
+```bash
+docker build -t glean-guru .
+docker run -d -p 8080:8080 \
+  -e QWEN_API_KEY=your_key_here \
+  -e DASHSCOPE_ENDPOINT=https://dashscope.aliyuncs.com/api/v1 \
+  glean-guru
+```
+
+To run this on Alibaba Cloud itself instead of locally:
+1. Alibaba Cloud console → **Container Registry (ACR)** → create a Personal
+   Instance (free tier is fine) → create a namespace + image repository.
+2. Build, tag, and push:
+   ```bash
+   docker build -t glean-guru .
+   docker tag glean-guru registry.<region>.aliyuncs.com/<namespace>/glean-guru:latest
+   docker login registry.<region>.aliyuncs.com
+   docker push registry.<region>.aliyuncs.com/<namespace>/glean-guru:latest
+   ```
+3. Run it on **ECS** (a VM you `docker run` on directly), **ACK** (managed
+   Kubernetes, only worth it if you already run k8s), or **SAE** (Serverless
+   App Engine - simplest managed option, point it at the ACR image, no VM to
+   manage). Set `QWEN_API_KEY` as an environment variable on whichever
+   compute service you pick.
+4. Open a security-group rule for port 8080 (or put a Server Load Balancer /
+   Alibaba CDN with an HTTPS cert in front of it - recommended for anything
+   public, since the raw container serves plain HTTP).
+
+### Path B — Static OSS + CDN (chat will NOT work)
+
+Already automated by `.github/workflows/alibabacloud.yml`:
+1. Alibaba Cloud console → **Object Storage Service (OSS)** → Create Bucket.
+   Note the exact **region code** (e.g. `oss-us-west-1`) shown on the
+   bucket's overview page, and the exact **bucket name**.
+2. Console → **RAM** → Users → create a user with programmatic access,
+   attach an OSS read/write policy scoped to this bucket. Save the
+   AccessKey ID/Secret (the secret is shown only once).
+3. GitHub repo → **Settings → Secrets and variables → Actions**, add:
+   `ALIBABA_ACCESS_KEY_ID`, `ALIBABA_ACCESS_KEY_SECRET`,
+   `ALIBABA_OSS_REGION`, `ALIBABA_OSS_BUCKET`.
+4. Push to `main`. The workflow builds the Flutter web app, configures the
+   bucket for static-website hosting via `oss-website-config.xml` (so
+   refreshing the page doesn't 404), and syncs `build/web/` to the bucket.
+5. Optionally front it with **Alibaba CDN** for a custom domain + HTTPS (the
+   raw OSS website endpoint is HTTP-only by default).
+
+Remember: this path is pure static hosting. `/api/chat` will return a 404
+here — there's no server to run it. Use Path A if you want chat to work on
+Alibaba Cloud.
+
+## Getting a Dashscope (Qwen) API key
+
+Needed for **both** deploy paths above:
+1. Go to https://dashscope.console.aliyun.com (or the Mainland China console
+   if that's where your Alibaba account is registered).
+2. **API-KEY management** → create a new key.
+3. Put that value in `QWEN_API_KEY` wherever you deployed (Vercel env var, or
+   your Docker container's `-e QWEN_API_KEY=...`). It should never appear in
+   any client-side code — `api/chat.js` and `server.js` both keep it
+   server-side only, which is why the Flutter client only ever calls its own
+   `/api/chat`, never Dashscope directly.
+4. If the key was issued through the Mainland China console specifically,
+   also set `DASHSCOPE_ENDPOINT=https://dashscope.aliyuncs.com/api/v1`;
+   otherwise leave it unset (defaults to the international endpoint).

@@ -51,8 +51,6 @@ app.use(
   express.static(WEB_ROOT, {
     maxAge: "1y",
     setHeaders: (res, filePath) => {
-      // Never cache the HTML entry point, otherwise browsers/CDNs can pin
-      // users to a stale bundle after a redeploy.
       if (filePath.endsWith("index.html")) {
         res.setHeader("Cache-Control", "no-cache");
       }
@@ -61,8 +59,7 @@ app.use(
 );
 
 // SPA fallback: any route that isn't a static file or /api/* goes to
-// index.html so Flutter's router (go_router) can handle client-side routes
-// like /home or /profile without a 404 on refresh/deep link.
+// index.html.
 app.get("*", (req, res) => {
   if (req.path.startsWith("/api/")) {
     return res.status(404).json({ error: "Not found" });
